@@ -21,6 +21,7 @@
     "validation"
   ],
   "scripts": {
+    "preinstall": "cd ../ajv && npm install && npm run build",
     "build": "run-s clean build:ts",
     "build:ts": "tsc",
     "clean": "rimraf dist",
@@ -40,7 +41,7 @@
     "resources"
   ],
   "dependencies": {
-    "ajv": "^8.2.0",
+    "ajv": "file:../ajv",
     "ajv-formats": "^2.0.2",
     "debug": "^4.3.1",
     "lodash": "^4.17.21",
