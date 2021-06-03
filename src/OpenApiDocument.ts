@@ -122,6 +122,7 @@ export interface ParameterObject {
   required?: boolean;
   deprecated?: boolean;
   allowEmptyValue?: boolean;
+  $ref?: string;
   style?: ParameterStyle;
   explode?: boolean;
   allowReserved?: boolean;

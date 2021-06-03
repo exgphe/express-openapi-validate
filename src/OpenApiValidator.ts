@@ -101,7 +101,7 @@ export default class OpenApiValidator {
     );
     const bodySchema = _.get(
       requestBodyObject,
-      ["content", "application/json", "schema"],
+      ["content", "application/yang-data+json", "schema"],
       {},
     );
 
@@ -188,7 +188,7 @@ export default class OpenApiValidator {
       const responseObject = this._getResponseObject(operation, statusCode);
       const bodySchema = _.get(
         responseObject,
-        ["content", "application/json", "schema"],
+        ["content", "application/yang-data+json", "schema"],
         {},
       );
 
