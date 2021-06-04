@@ -77,6 +77,7 @@ export const walkSchema = (
 export const mapOasSchemaToJsonSchema = (
   originalSchema: SchemaObject,
   document: OpenApiDocument,
+  disallowAdditionalPropertiesByDefault: boolean
 ): SchemaObject => {
   const mapOasFieldsToJsonSchemaFields = (s: SchemaObject): SchemaObject => {
     const schema = resolveReference(document, s);
@@ -86,7 +87,7 @@ export const mapOasSchemaToJsonSchema = (
     if (Array.isArray(schema.items)) {
       throw new TypeError("Items field in schema must not be an array");
     }
-    if (!schema.additionalProperties) {
+    if (disallowAdditionalPropertiesByDefault && !schema.additionalProperties) {
       schema.additionalProperties = false
     }
     return schema;

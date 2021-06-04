@@ -14,7 +14,7 @@
   limitations under the License.
 */
 
-import Ajv, {Options as AjvOptions, ErrorObject, KeywordCxt} from "ajv";
+import Ajv, {Options as AjvOptions, ErrorObject, KeywordCxt, Code} from "ajv";
 import addFormats from "ajv-formats";
 // eslint-disable-next-line import/no-extraneous-dependencies
 import {RequestHandler} from "express";
@@ -37,7 +37,7 @@ import {
   resolveReference,
 } from "./schema-utils";
 import ValidationError from "./ValidationError";
-import {_ as codegen} from "ajv/dist/compile/codegen"
+import {_ as $, str} from "ajv/dist/compile/codegen"
 
 const resolveResponse = (res: any): any => {
   if (res == null) {
@@ -57,6 +57,7 @@ const resolveResponse = (res: any): any => {
 
 export interface ValidatorConfig {
   ajvOptions?: AjvOptions;
+  disallowAdditionalPropertiesByDefault?: boolean;
 }
 
 export interface PathRegexpObject {
@@ -72,6 +73,7 @@ export default class OpenApiValidator {
   private _ajv: Ajv;
 
   private _document: OpenApiDocument;
+  private disallowAdditionalPropertiesByDefault: boolean;
 
   constructor(openApiDocument: OpenApiDocument, options: ValidatorConfig = {}) {
     if (!semver.satisfies(openApiDocument.openapi, "^3.0.0")) {
@@ -80,6 +82,7 @@ export default class OpenApiValidator {
       throw new Error(`Unsupported OpenAPI / Swagger version=${version}`);
     }
     this._document = openApiDocument;
+    this.disallowAdditionalPropertiesByDefault = options.disallowAdditionalPropertiesByDefault === true
     const userAjvFormats = _.get(options, ["ajvOptions", "formats"], {});
     const ajvOptions: AjvOptions = {
       discriminator: true,
@@ -91,7 +94,7 @@ export default class OpenApiValidator {
     this._ajv.addKeyword("example");
     this._ajv.addKeyword("xml");
     this._ajv.addKeyword("externalDocs");
-    const ignoredExtensionKeywords = ["x-range", "x-fraction-digits", "x-length", "x-union", "x-key", "x-mandatory", "x-anyxml", "x-choice", "x-path", "x-augmentation", "x-type"];
+    const ignoredExtensionKeywords = ["x-fraction-digits", "x-length", "x-mandatory", "x-anyxml", "x-choice", "x-path", "x-augmentation", "x-type"];
     for (const keyword of ignoredExtensionKeywords) {
       this._ajv.addKeyword(keyword);
     }
@@ -100,7 +103,77 @@ export default class OpenApiValidator {
       type: 'array',
       schemaType: 'boolean',
       code(cxt: KeywordCxt) {
-        cxt.pass(codegen`${cxt.data}.length===1&&${cxt.data}[0]===null`)
+        cxt.pass($`${cxt.data}.length===1&&${cxt.data}[0]===null`)
+      },
+      error: {
+        message: 'An "empty" value must be represented as "[null]", See RFC7951'
+      }
+    })
+    this._ajv.addKeyword({
+      keyword: 'x-key',
+      type: 'array',
+      schemaType: 'string',
+      code(cxt: KeywordCxt) {
+        const {gen, schema, data} = cxt
+        const keys = gen.const('keys', $`${schema}.split(',')`)
+        const idSet = gen.const('idSet', $`new Set()`)
+        const valid = gen.let("valid", true)
+        gen.forOf('item', data, item => {
+          const id = gen.let('id', str``)
+          gen.forIn('i', keys, i => {
+            const key = gen.const('key', $`${keys}[${i}]`)
+            gen.if($`${item}[${key}] === undefined || ${item}[${key}] === null`, () => {
+              cxt.setParams({errorMessage: str`Key '${key}' is not present in array item`})
+              cxt.error()
+              gen.break()
+            })
+            gen.if($`${i}==='0'`)
+            gen.assign(id, $`${item}[${key}]`)
+            gen.else()
+            gen.assign(id, $`${id} + ',' + ${item}[${key}]`)
+            gen.endIf()
+          })
+          gen.if($`${idSet}.has(${id})`, () => {
+            cxt.setParams({errorMessage: str`Array item has redundant key '${id}'`})
+            cxt.error()
+            gen.break()
+          })
+          gen.code($`${idSet}.add(${id})`)
+        })
+        cxt.pass(valid)
+      },
+      error: {
+        message: ({params: {errorMessage}}) => str`${errorMessage}`,
+      }
+    })
+    this._ajv.addKeyword({
+      keyword: 'x-range',
+      type: ['string', 'integer'],
+      schemaType: 'array',
+      code(cxt: KeywordCxt) {
+        const {gen, data, schemaValue, parentSchema} = cxt
+        const valid = gen.let('valid', false)
+        const num = gen.let('num', data)
+        gen.if($`typeof ${num} === 'string'`, () => {
+          const xType = parentSchema['x-type']
+          if (xType === 'int64' || xType === 'uint64') {
+            gen.assign(num, $`new BigInt(${num})`)
+          } else {
+            gen.assign(num, $`Number(${num})`)
+          }
+        })
+        gen.forOf('range', <Code>schemaValue, (range) => {
+          gen.if($`${data} >= ${range}.min && ${data} <= ${range}.max`, () => {
+            gen.assign(valid, true)
+            gen.break()
+          })
+        })
+        cxt.pass(valid)
+      },
+      error: {
+        message({data, schemaValue})  {
+          return str`Value ${data} does not meet the range restrictions: ${$`${schemaValue}.map(range => range.min + ' .. ' + range.max).join(' | ')`}`
+        }
       }
     })
   }
@@ -139,7 +212,7 @@ export default class OpenApiValidator {
     if (_.get(requestBodyObject, ["required"]) === true) {
       schema.required.push("body");
     }
-    const jsonSchema = mapOasSchemaToJsonSchema(schema, this._document);
+    const jsonSchema = mapOasSchemaToJsonSchema(schema, this._document, this.disallowAdditionalPropertiesByDefault);
     const validator = this._ajv.compile(jsonSchema);
     debug(`Request JSON Schema for ${method} ${path}: %j`, jsonSchema);
 
@@ -241,6 +314,7 @@ export default class OpenApiValidator {
           required: ["headers", "body"],
         },
         this._document,
+        this.disallowAdditionalPropertiesByDefault
       );
 
       debug(
