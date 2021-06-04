@@ -87,7 +87,7 @@ export const mapOasSchemaToJsonSchema = (
     if (Array.isArray(schema.items)) {
       throw new TypeError("Items field in schema must not be an array");
     }
-    if (disallowAdditionalPropertiesByDefault && !schema.additionalProperties) {
+    if (disallowAdditionalPropertiesByDefault && !schema.additionalProperties && schema.type) {
       schema.additionalProperties = false
     }
     return schema;
