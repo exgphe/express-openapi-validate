@@ -14,7 +14,7 @@
   limitations under the License.
 */
 
-import Ajv, {Options as AjvOptions, ErrorObject} from "ajv";
+import Ajv, {Options as AjvOptions, ErrorObject, KeywordCxt} from "ajv";
 import addFormats from "ajv-formats";
 // eslint-disable-next-line import/no-extraneous-dependencies
 import {RequestHandler} from "express";
@@ -37,6 +37,7 @@ import {
   resolveReference,
 } from "./schema-utils";
 import ValidationError from "./ValidationError";
+import {_ as codegen} from "ajv/dist/compile/codegen"
 
 const resolveResponse = (res: any): any => {
   if (res == null) {
@@ -90,10 +91,18 @@ export default class OpenApiValidator {
     this._ajv.addKeyword("example");
     this._ajv.addKeyword("xml");
     this._ajv.addKeyword("externalDocs");
-    const extensionKeywords = ["x-range", "x-fraction-digits", "x-length", "x-union", "x-empty", "x-key", "x-mandatory", "x-anyxml", "x-choice", "x-path", "x-augmentation", "x-type"];
-    for (const keyword of extensionKeywords) {
+    const ignoredExtensionKeywords = ["x-range", "x-fraction-digits", "x-length", "x-union", "x-key", "x-mandatory", "x-anyxml", "x-choice", "x-path", "x-augmentation", "x-type"];
+    for (const keyword of ignoredExtensionKeywords) {
       this._ajv.addKeyword(keyword);
     }
+    this._ajv.addKeyword({
+      keyword: 'x-empty',
+      type: 'array',
+      schemaType: 'boolean',
+      code(cxt: KeywordCxt) {
+        cxt.pass(codegen`${cxt.data}.length===1&&${cxt.data}[0]===null`)
+      }
+    })
   }
 
   public validate(method: Operation, path: string): RequestHandler {
