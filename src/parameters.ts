@@ -5,7 +5,7 @@ import OpenApiDocument, {
   ReferenceObject,
   SchemaObject,
 } from "./OpenApiDocument";
-import { resolveReference } from "./schema-utils";
+import {resolveReference} from "./schema-utils";
 
 export type Parameters = Array<ParameterObject | ReferenceObject> | undefined;
 
@@ -57,7 +57,12 @@ const parameterLocationToRequestField = (
 export function buildSchema(
   parameterObjects: ParameterObject[],
 ): { [field: string]: SchemaObject } {
-  const schema = { query: {}, headers: {}, params: {}, cookies: {} };
+  const schema = {
+    query: {additionalProperties: true},
+    headers: {additionalProperties: true},
+    params: {additionalProperties: true},
+    cookies: {additionalProperties: true}
+  };
   parameterObjects.forEach((parameterObject) => {
     const location = parameterObject.in;
     const name =

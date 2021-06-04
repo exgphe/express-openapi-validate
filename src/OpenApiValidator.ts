@@ -14,12 +14,12 @@
   limitations under the License.
 */
 
-import Ajv, { Options as AjvOptions, ErrorObject } from "ajv";
+import Ajv, {Options as AjvOptions, ErrorObject} from "ajv";
 import addFormats from "ajv-formats";
 // eslint-disable-next-line import/no-extraneous-dependencies
-import { RequestHandler } from "express";
+import {RequestHandler} from "express";
 import _ from "lodash";
-import { pathToRegexp } from "path-to-regexp";
+import {pathToRegexp} from "path-to-regexp";
 import * as semver from "semver";
 
 import debug from "./debug";
@@ -45,13 +45,13 @@ const resolveResponse = (res: any): any => {
   const statusCodeNum = Number(res.statusCode || res.status);
   const statusCode = Number.isNaN(statusCodeNum) ? null : statusCodeNum;
   const body = res.body || res.data;
-  const { headers } = res;
+  const {headers} = res;
   if (statusCode == null || body == null || headers == null) {
     throw new TypeError(
       "statusCode, body or header values not found from response",
     );
   }
-  return { statusCode, body, headers };
+  return {statusCode, body, headers};
 };
 
 export interface ValidatorConfig {
@@ -83,13 +83,17 @@ export default class OpenApiValidator {
     const ajvOptions: AjvOptions = {
       discriminator: true,
       ...options.ajvOptions,
-      formats: { ...formats, ...userAjvFormats },
+      formats: {...formats, ...userAjvFormats},
     };
     this._ajv = new Ajv(ajvOptions);
     addFormats(this._ajv, ["date", "date-time"]);
     this._ajv.addKeyword("example");
     this._ajv.addKeyword("xml");
     this._ajv.addKeyword("externalDocs");
+    const extensionKeywords = ["x-range", "x-fraction-digits", "x-length", "x-union", "x-empty", "x-key", "x-mandatory", "x-anyxml", "x-choice", "x-path", "x-augmentation", "x-type"];
+    for (const keyword of extensionKeywords) {
+      this._ajv.addKeyword(keyword);
+    }
   }
 
   public validate(method: Operation, path: string): RequestHandler {
@@ -119,7 +123,7 @@ export default class OpenApiValidator {
       },
       required: ["query", "headers", "params"],
     };
-    if (!_.isEmpty(parametersSchema.cookies)) {
+    if (!_.isEmpty(parametersSchema.cookies) && Object.keys(parametersSchema.cookies).length > 1) {
       schema.required.push("cookies");
     }
 
@@ -134,7 +138,7 @@ export default class OpenApiValidator {
       const reqToValidate = {
         ..._.pick(req, "query", "headers", "params", "body"),
         cookies: req.cookies
-          ? { ...req.cookies, ...req.signedCookies }
+          ? {...req.cookies, ...req.signedCookies}
           : undefined,
       };
       const valid = validator(reqToValidate);
@@ -142,7 +146,7 @@ export default class OpenApiValidator {
         next();
       } else {
         const errors = validator.errors as ErrorObject[];
-        const errorText = this._ajv.errorsText(errors, { dataVar: "request" });
+        const errorText = this._ajv.errorsText(errors, {dataVar: "request"});
         const err = new ValidationError(
           `Error while validating request: ${errorText}`,
           errors,
@@ -155,7 +159,7 @@ export default class OpenApiValidator {
   }
 
   public match(
-    options: MatchOptions = { allowNoMatch: false },
+    options: MatchOptions = {allowNoMatch: false},
   ): RequestHandler {
     const paths: PathRegexpObject[] = _.keys(this._document.paths).map(
       (path) => ({
@@ -164,7 +168,7 @@ export default class OpenApiValidator {
       }),
     );
     const matchAndValidate: RequestHandler = (req, res, next) => {
-      const match = paths.find(({ regex }) => regex.test(req.path));
+      const match = paths.find(({regex}) => regex.test(req.path));
       const method = req.method.toLowerCase() as Operation;
       if (match) {
         this.validate(method, match.path)(req, res, next);
@@ -184,7 +188,7 @@ export default class OpenApiValidator {
   public validateResponse(method: Operation, path: string): (res: any) => void {
     const operation = this._getOperationObject(method, path);
     const validateResponse = (userResponse: any): void => {
-      const { statusCode, ...response } = resolveResponse(userResponse);
+      const {statusCode, ...response} = resolveResponse(userResponse);
       const responseObject = this._getResponseObject(operation, statusCode);
       const bodySchema = _.get(
         responseObject,

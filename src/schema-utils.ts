@@ -52,13 +52,13 @@ export const walkSchema = (
   const walk = (s: SchemaObject): SchemaObject => walkSchema(s, mapper);
 
   if (schema.properties !== undefined) {
-    schema = { ...schema, properties: _.mapValues(schema.properties, walk) };
+    schema = {...schema, properties: _.mapValues(schema.properties, walk)};
   }
 
   arrayFields
     .filter((f) => f in schema)
     .forEach((f) => {
-      schema = { ...schema, [f]: (schema as any)[f].map(walk) };
+      schema = {...schema, [f]: (schema as any)[f].map(walk)};
     });
 
   schemaFields
@@ -68,7 +68,7 @@ export const walkSchema = (
       if (f === "additionalProperties" && typeof nestedSchema === "boolean") {
         return;
       }
-      schema = { ...schema, [f]: walk(nestedSchema) };
+      schema = {...schema, [f]: walk(nestedSchema)};
     });
 
   return schema;
@@ -86,7 +86,9 @@ export const mapOasSchemaToJsonSchema = (
     if (Array.isArray(schema.items)) {
       throw new TypeError("Items field in schema must not be an array");
     }
-
+    if (!schema.additionalProperties) {
+      schema.additionalProperties = false
+    }
     return schema;
   };
   return walkSchema(originalSchema, mapOasFieldsToJsonSchemaFields);
