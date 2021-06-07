@@ -94,7 +94,7 @@ export default class OpenApiValidator {
     this._ajv.addKeyword("example");
     this._ajv.addKeyword("xml");
     this._ajv.addKeyword("externalDocs");
-    const ignoredExtensionKeywords = ["x-fraction-digits", "x-length", "x-mandatory", "x-anyxml", "x-choice", "x-path", "x-augmentation", "x-type"];
+    const ignoredExtensionKeywords = ["x-fraction-digits", "x-length", "x-mandatory", "x-anyxml", "x-anydata", "x-choice", "x-path", "x-augmentation", "x-type"];
     for (const keyword of ignoredExtensionKeywords) {
       this._ajv.addKeyword(keyword);
     }
@@ -171,7 +171,7 @@ export default class OpenApiValidator {
         cxt.pass(valid)
       },
       error: {
-        message({data, schemaValue})  {
+        message({data, schemaValue}) {
           return str`Value ${data} does not meet the range restrictions: ${$`${schemaValue}.map(range => range.min + ' .. ' + range.max).join(' | ')`}`
         }
       }
@@ -213,6 +213,20 @@ export default class OpenApiValidator {
       schema.required.push("body");
     }
     const jsonSchema = mapOasSchemaToJsonSchema(schema, this._document, this.disallowAdditionalPropertiesByDefault);
+    if (method === 'post' || method === 'patch' || method === 'put') {
+      // TODO find a better place to put this piece of codes
+      this._ajv.removeKeyword('readOnly')
+      this._ajv.addKeyword({
+        keyword: 'readOnly',
+        schemaType: 'boolean',
+        type: ["string", "number", "integer", "boolean", "null", "object", "array"],
+        code(cxt) {
+          cxt.error()
+        }
+      })
+    } else {
+      this._ajv.removeKeyword('readOnly')
+    }
     const validator = this._ajv.compile(jsonSchema);
     debug(`Request JSON Schema for ${method} ${path}: %j`, jsonSchema);
 
