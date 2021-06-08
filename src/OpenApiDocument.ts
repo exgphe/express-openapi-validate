@@ -45,6 +45,7 @@ export interface SchemaObject {
   oneOf?: SchemaObject[];
   not?: SchemaObject;
   additionalProperties?: boolean | SchemaObject;
+  "x-mandatory"?: boolean;
 }
 
 export interface ComponentsObject {

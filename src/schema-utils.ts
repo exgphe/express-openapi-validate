@@ -77,7 +77,8 @@ export const walkSchema = (
 export const mapOasSchemaToJsonSchema = (
   originalSchema: SchemaObject,
   document: OpenApiDocument,
-  disallowAdditionalPropertiesByDefault: boolean
+  disallowAdditionalPropertiesByDefault: boolean,
+  mandatoryToRequired = false
 ): SchemaObject => {
   const mapOasFieldsToJsonSchemaFields = (s: SchemaObject): SchemaObject => {
     const schema = resolveReference(document, s);
@@ -89,6 +90,20 @@ export const mapOasSchemaToJsonSchema = (
     }
     if (disallowAdditionalPropertiesByDefault && schema.type === 'object' && !schema.additionalProperties) {
       schema.additionalProperties = false
+    }
+    if (mandatoryToRequired) {
+      const required = new Set(schema.required)
+      for (const propertiesKey in schema.properties) {
+        if (Object.prototype.hasOwnProperty.call(schema.properties, propertiesKey)) {
+          const property = schema.properties[propertiesKey]
+          if (property["x-mandatory"]) {
+            required.add(propertiesKey)
+          }
+        }
+      }
+      if (required.size > 0) {
+        schema.required = Array.from(required)
+      }
     }
     return schema;
   };

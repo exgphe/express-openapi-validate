@@ -212,7 +212,7 @@ export default class OpenApiValidator {
     if (_.get(requestBodyObject, ["required"]) === true) {
       schema.required.push("body");
     }
-    const jsonSchema = mapOasSchemaToJsonSchema(schema, this._document, this.disallowAdditionalPropertiesByDefault);
+    const jsonSchema = mapOasSchemaToJsonSchema(schema, this._document, this.disallowAdditionalPropertiesByDefault, method === 'put' || method === 'post');
     if (method === 'post' || method === 'patch' || method === 'put') {
       // TODO find a better place to put this piece of codes
       this._ajv.removeKeyword('readOnly')
@@ -328,7 +328,8 @@ export default class OpenApiValidator {
           required: ["headers", "body"],
         },
         this._document,
-        this.disallowAdditionalPropertiesByDefault
+        this.disallowAdditionalPropertiesByDefault,
+        true
       );
 
       debug(
