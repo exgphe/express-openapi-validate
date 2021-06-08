@@ -37,7 +37,8 @@ import {
   resolveReference,
 } from "./schema-utils";
 import ValidationError from "./ValidationError";
-import {_ as $, str} from "ajv/dist/compile/codegen"
+import {_ as $, str, not} from "ajv/dist/compile/codegen"
+import * as util from 'ajv/dist/compile/util'
 
 const resolveResponse = (res: any): any => {
   if (res == null) {
@@ -94,10 +95,42 @@ export default class OpenApiValidator {
     this._ajv.addKeyword("example");
     this._ajv.addKeyword("xml");
     this._ajv.addKeyword("externalDocs");
-    const ignoredExtensionKeywords = ["x-fraction-digits", "x-length", "x-mandatory", "x-anyxml", "x-anydata", "x-choice", "x-path", "x-augmentation", "x-type"];
+    const ignoredExtensionKeywords = ["x-fraction-digits", "x-length", "x-mandatory", "x-anyxml", "x-anydata", "x-choice", "x-path", "x-augmentation", "x-type", "x-union", "x-unions"];
     for (const keyword of ignoredExtensionKeywords) {
       this._ajv.addKeyword(keyword);
     }
+    // this._ajv.removeKeyword('anyOf')
+    // this._ajv.addKeyword({
+    //   keyword: 'anyOf',
+    //   schemaType: 'array',
+    //   code(cxt: KeywordCxt) {
+    //     const {gen, schema, keyword, it} = cxt;
+    //     /* istanbul ignore if */
+    //     if (!Array.isArray(schema))
+    //       throw new Error("ajv implementation error");
+    //     const alwaysValid = schema.some((sch) => util.alwaysValidSchema(it, sch));
+    //     if (alwaysValid && !it.opts.unevaluated)
+    //       return;
+    //     const valid = gen.let("valid", false);
+    //     const schValid = gen.name("_valid");
+    //     gen.block(() => schema.forEach((_sch, i) => {
+    //       const schCxt = cxt.subschema({
+    //         keyword,
+    //         schemaProp: i,
+    //         compositeRule: true,
+    //       }, schValid);
+    //       gen.assign(valid, $`${valid} || ${schValid}`);
+    //       const merged = cxt.mergeValidEvaluated(schCxt, schValid);
+    //       // can short-circuit if `unevaluatedProperties/Items` not supported (opts.unevaluated !== true)
+    //       // or if all properties and items were evaluated (it.props === true && it.items === true)
+    //       if (!merged)
+    //         gen.if(not(valid));
+    //     }));
+    //     cxt.result(valid, () => cxt.reset(), () => cxt.error(true));
+    //   },
+    //   error: {message: "must match a schema in anyOf"},
+    //   trackErrors: true,
+    // })
     this._ajv.addKeyword({
       keyword: 'x-empty',
       type: 'array',
@@ -107,43 +140,6 @@ export default class OpenApiValidator {
       },
       error: {
         message: 'An "empty" value must be represented as "[null]", See RFC7951'
-      }
-    })
-    this._ajv.addKeyword({
-      keyword: 'x-key',
-      type: 'array',
-      schemaType: 'string',
-      code(cxt: KeywordCxt) {
-        const {gen, schema, data} = cxt
-        const keys = gen.const('keys', $`${schema}.split(',')`)
-        const idSet = gen.const('idSet', $`new Set()`)
-        const valid = gen.let("valid", true)
-        gen.forOf('item', data, item => {
-          const id = gen.let('id', str``)
-          gen.forIn('i', keys, i => {
-            const key = gen.const('key', $`${keys}[${i}]`)
-            gen.if($`${item}[${key}] === undefined || ${item}[${key}] === null`, () => {
-              cxt.setParams({errorMessage: str`Key '${key}' is not present in array item`})
-              cxt.error()
-              gen.break()
-            })
-            gen.if($`${i}==='0'`)
-            gen.assign(id, $`${item}[${key}]`)
-            gen.else()
-            gen.assign(id, $`${id} + ',' + ${item}[${key}]`)
-            gen.endIf()
-          })
-          gen.if($`${idSet}.has(${id})`, () => {
-            cxt.setParams({errorMessage: str`Array item has redundant key '${id}'`})
-            cxt.error()
-            gen.break()
-          })
-          gen.code($`${idSet}.add(${id})`)
-        })
-        cxt.pass(valid)
-      },
-      error: {
-        message: ({params: {errorMessage}}) => str`${errorMessage}`,
       }
     })
     this._ajv.addKeyword({
@@ -157,7 +153,7 @@ export default class OpenApiValidator {
         gen.if($`typeof ${num} === 'string'`, () => {
           const xType = parentSchema['x-type']
           if (xType === 'int64' || xType === 'uint64') {
-            gen.assign(num, $`new BigInt(${num})`)
+            gen.assign(num, $`BigInt(${num})`)
           } else {
             gen.assign(num, $`Number(${num})`)
           }
@@ -226,6 +222,50 @@ export default class OpenApiValidator {
       })
     } else {
       this._ajv.removeKeyword('readOnly')
+      this._ajv.addKeyword('readOnly')
+    }
+    if (method === 'patch') {
+      this._ajv.removeKeyword('x-key')
+      this._ajv.addKeyword('x-key')
+    } else {
+      this._ajv.removeKeyword('x-key')
+      this._ajv.addKeyword({
+        keyword: 'x-key',
+        type: 'array',
+        schemaType: 'string',
+        code(cxt: KeywordCxt) {
+          const {gen, schema, data} = cxt
+          const keys = gen.const('keys', $`${schema}.split(',')`)
+          const idSet = gen.const('idSet', $`new Set()`)
+          const valid = gen.let("valid", true)
+          gen.forOf('item', data, item => {
+            const id = gen.let('id', str``)
+            gen.forIn('i', keys, i => {
+              const key = gen.const('key', $`${keys}[${i}]`)
+              gen.if($`${item}[${key}] === undefined || ${item}[${key}] === null`, () => {
+                cxt.setParams({errorMessage: str`Key '${key}' is not present in array item`})
+                cxt.error()
+                gen.break()
+              })
+              gen.if($`${i}==='0'`)
+              gen.assign(id, $`${item}[${key}]`)
+              gen.else()
+              gen.assign(id, $`${id} + ',' + ${item}[${key}]`)
+              gen.endIf()
+            })
+            gen.if($`${idSet}.has(${id})`, () => {
+              cxt.setParams({errorMessage: str`Array item has redundant key '${id}'`})
+              cxt.error()
+              gen.break()
+            })
+            gen.code($`${idSet}.add(${id})`)
+          })
+          cxt.pass(valid)
+        },
+        error: {
+          message: ({params: {errorMessage}}) => str`${errorMessage}`,
+        }
+      })
     }
     const validator = this._ajv.compile(jsonSchema);
     debug(`Request JSON Schema for ${method} ${path}: %j`, jsonSchema);
@@ -281,10 +321,48 @@ export default class OpenApiValidator {
     return matchAndValidate;
   }
 
-  public validateResponse(method: Operation, path: string): (res: any) => void {
+  public validateResponse(method: Operation, path: string): RequestHandler {
     const operation = this._getOperationObject(method, path);
-    const validateResponse = (userResponse: any): void => {
-      const {statusCode, ...response} = resolveResponse(userResponse);
+    this._ajv.removeKeyword('x-key')
+    this._ajv.addKeyword({
+      keyword: 'x-key',
+      type: 'array',
+      schemaType: 'string',
+      code(cxt: KeywordCxt) {
+        const {gen, schema, data} = cxt
+        const keys = gen.const('keys', $`${schema}.split(',')`)
+        const idSet = gen.const('idSet', $`new Set()`)
+        const valid = gen.let("valid", true)
+        gen.forOf('item', data, item => {
+          const id = gen.let('id', str``)
+          gen.forIn('i', keys, i => {
+            const key = gen.const('key', $`${keys}[${i}]`)
+            gen.if($`${item}[${key}] === undefined || ${item}[${key}] === null`, () => {
+              cxt.setParams({errorMessage: str`Key '${key}' is not present in array item`})
+              cxt.error()
+              gen.break()
+            })
+            gen.if($`${i}==='0'`)
+            gen.assign(id, $`${item}[${key}]`)
+            gen.else()
+            gen.assign(id, $`${id} + ',' + ${item}[${key}]`)
+            gen.endIf()
+          })
+          gen.if($`${idSet}.has(${id})`, () => {
+            cxt.setParams({errorMessage: str`Array item has redundant key '${id}'`})
+            cxt.error()
+            gen.break()
+          })
+          gen.code($`${idSet}.add(${id})`)
+        })
+        cxt.pass(valid)
+      },
+      error: {
+        message: ({params: {errorMessage}}) => str`${errorMessage}`,
+      }
+    })
+    const validateResponse: RequestHandler = (req, res, next) => {
+      const {statusCode, ...response} = resolveResponse(req);
       const responseObject = this._getResponseObject(operation, statusCode);
       const bodySchema = _.get(
         responseObject,
@@ -292,31 +370,31 @@ export default class OpenApiValidator {
         {},
       );
 
-      const headerObjectMap = _.get(responseObject, ["headers"], {});
+      // const headerObjectMap = _.get(responseObject, ["headers"], {});
       const headersSchema: SchemaObject = {
         type: "object",
         properties: {},
       };
-      Object.keys(headerObjectMap).forEach((key) => {
-        const headerObject = resolveReference(
-          this._document,
-          headerObjectMap[key],
-        );
-        const name = key.toLowerCase();
-        if (name === "content-type") {
-          return;
-        }
-        if (headerObject.required === true) {
-          if (!Array.isArray(headersSchema.required)) {
-            headersSchema.required = [];
-          }
-          headersSchema.required.push(name);
-        }
-        (headersSchema.properties as any)[name] = resolveReference(
-          this._document,
-          headerObject.schema || {},
-        );
-      });
+      // Object.keys(headerObjectMap).forEach((key) => {
+      //   const headerObject = resolveReference(
+      //     this._document,
+      //     headerObjectMap[key],
+      //   );
+      //   const name = key.toLowerCase();
+      //   if (name === "content-type") {
+      //     return;
+      //   }
+      //   if (headerObject.required === true) {
+      //     if (!Array.isArray(headersSchema.required)) {
+      //       headersSchema.required = [];
+      //     }
+      //     headersSchema.required.push(name);
+      //   }
+      //   (headersSchema.properties as any)[name] = resolveReference(
+      //     this._document,
+      //     headerObject.schema || {},
+      //   );
+      // });
 
       const schema = mapOasSchemaToJsonSchema(
         {
@@ -325,7 +403,9 @@ export default class OpenApiValidator {
             body: resolveReference(this._document, bodySchema),
             headers: headersSchema,
           },
-          required: ["headers", "body"],
+          required: [
+            "headers",
+            "body"],
         },
         this._document,
         this.disallowAdditionalPropertiesByDefault,
@@ -336,16 +416,18 @@ export default class OpenApiValidator {
         `Response JSON Schema for ${method} ${path} ${statusCode}: %j`,
         schema,
       );
-
-      const valid = this._ajv.validate(schema, response);
-      if (!valid) {
-        const errorText = this._ajv.errorsText(this._ajv.errors, {
-          dataVar: "response",
-        });
-        throw new ValidationError(
-          `Error while validating response: ${errorText}`,
-          this._ajv.errors as ErrorObject[],
+      const validator = this._ajv.compile(schema);
+      const valid = validator(response);
+      if (valid) {
+        next();
+      } else {
+        const errors = validator.errors as ErrorObject[];
+        const errorText = this._ajv.errorsText(errors, {dataVar: "request"});
+        const err = new ValidationError(
+          `Error while validating request: ${errorText}`,
+          errors,
         );
+        next(err);
       }
     };
     return validateResponse;
