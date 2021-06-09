@@ -95,7 +95,7 @@ export default class OpenApiValidator {
     this._ajv.addKeyword("example");
     this._ajv.addKeyword("xml");
     this._ajv.addKeyword("externalDocs");
-    const ignoredExtensionKeywords = ["x-fraction-digits", "x-length", "x-mandatory", "x-anyxml", "x-anydata", "x-choice", "x-path", "x-augmentation", "x-type", "x-union", "x-unions"];
+    const ignoredExtensionKeywords = ["x-fraction-digits", "x-length", "x-mandatory", "x-anyxml", "x-anydata", "x-choice", "x-path", "x-augmentation", "x-type", "x-union", "x-unions", "x-choices"];
     for (const keyword of ignoredExtensionKeywords) {
       this._ajv.addKeyword(keyword);
     }
